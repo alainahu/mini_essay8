@@ -1,0 +1,5 @@
+"0","airbnb_data_selected <-"
+"0","  airbnb_data_selected |>"
+"0","  add_count(host_id) |>"
+"0","  filter(n == 1) |>"
+"0","  select(-n)"

@@ -1,0 +1,8 @@
+"0","airbnb_data_selected |>"
+"0","  ggplot(aes(x = price)) +"
+"0","  geom_histogram(binwidth = 10) +"
+"0","  theme_classic() +"
+"0","  labs("
+"0","    x = ""Price per night"","
+"0","    y = ""Number of properties"""
+"0","  )"

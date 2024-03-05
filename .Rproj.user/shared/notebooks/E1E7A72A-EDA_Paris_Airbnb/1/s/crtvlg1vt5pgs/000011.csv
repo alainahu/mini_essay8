@@ -1,0 +1,7 @@
+"0",""
+"0","airbnb_data_selected <-"
+"0","  airbnb_data_selected |>"
+"0","  mutate("
+"0","    price = str_remove_all(price, ""[\\$,]""),"
+"0","    price = as.integer(price)"
+"0","  )"

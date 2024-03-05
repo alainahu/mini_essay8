@@ -1,0 +1,1 @@
+{"height":344.8702101359703,"width":558.0,"size_behavior":0,"conditions":[[1,"Warning: \u001B[38;5;232mTransformation introduced infinite values in continuous y-axis\u001B[39m"],[1,"Warning: \u001B[38;5;232mRemoved 8085 rows containing missing values (`geom_bar()`).\u001B[39m"]]}

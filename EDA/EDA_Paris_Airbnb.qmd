@@ -1,0 +1,381 @@
+---
+title: "Exploratory Data Analysis for Airbnb in Paris, France"
+author: 
+  - Alaina Hu
+thanks: "Code and data are available at: https://github.com/alainahu/mini_essay8. "
+date: today
+date-format: long
+format: pdf
+number-sections: true
+bibliography: references.bib
+---
+
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+
+#install.packages("naniar")
+#install.packages("janitor")
+#install.packages("modelsummary")
+library(tidyverse)
+library(haven)
+library(arrow)
+library(naniar)
+library(janitor)
+library(modelsummary)
+```
+
+We gather Airbnb Data from Paris for analysis from @insideAirbnb. Code for this EDA is based on `Telling Stories with Data` @tellingstories.
+
+# Data
+The whole dataset is at 96MB, so we will create a parquet file with the variables we want. 
+```{r}
+airbnb_data <- read_csv("data/airbnb_data.csv", show_col_types = FALSE)
+
+airbnb_data_selected <-
+  airbnb_data |>
+  select(
+    host_id,
+    host_response_time,
+    host_is_superhost,
+    host_total_listings_count,
+    neighbourhood_cleansed,
+    bathrooms,
+    bedrooms,
+    price,
+    number_of_reviews,
+    review_scores_rating,
+    review_scores_accuracy,
+    review_scores_value
+  )
+
+write_parquet(
+  x = airbnb_data_selected, 
+  sink = 
+    "2023-12-12-paris-airbnblistings-select_variables.parquet"
+  )
+
+rm(airbnb_data)
+
+```
+# Distribution and Properties of Individual Variables
+
+An important aspect of Airbnb data is price. Here we look at the distribution and properties of prices of Airbnbs in Paris. First, we need to clean and organize the data for prices in a way that it can be analyzed.
+
+```{r}
+airbnb_data_selected$price |>
+  head()
+
+airbnb_data_selected$price |>
+  str_split("") |>
+  unlist() |>
+  unique()
+
+airbnb_data_selected |>
+  select(price) |>
+  filter(str_detect(price, ","))
+
+airbnb_data_selected <-
+  airbnb_data_selected |>
+  mutate(
+    price = str_remove_all(price, "[\\$,]"),
+    price = as.integer(price)
+  )
+```
+
+Now that the values have been formatted in a way that can be plotted. We look at the distribution of prices. Since the prices are likely to be skewed and have outliers, we use the log scale for prices. 
+
+```{r}
+#| warning: false
+#| message: false
+
+airbnb_data_selected |>
+  ggplot(aes(x = price)) +
+  geom_histogram(binwidth = 10) +
+  theme_classic() +
+  labs(
+    x = "Price per night",
+    y = "Number of properties"
+  )
+
+airbnb_data_selected |>
+  filter(price > 1000) |>
+  ggplot(aes(x = price)) +
+  geom_histogram(binwidth = 10) +
+  theme_classic() +
+  labs(
+    x = "Price per night",
+    y = "Number of properties"
+  ) +
+  scale_y_log10()
+
+```
+
+To zoom in, we look at prices that are less than $1000. From this, we can see that most prices are less than $300.  
+
+```{r}
+airbnb_data_selected |>
+  filter(price < 1000) |>
+  ggplot(aes(x = price)) +
+  geom_histogram(binwidth = 10) +
+  theme_classic() +
+  labs(
+    x = "Price per night",
+    y = "Number of properties"
+  )
+
+airbnb_data_selected |>
+  filter(price > 90) |>
+  filter(price < 300) |>
+  ggplot(aes(x = price)) +
+  geom_histogram(binwidth = 1) +
+  theme_classic() +
+  labs(
+    x = "Price per night",
+    y = "Number of properties"
+  )
+```
+
+We will remove all prices greater than $999.
+
+```{r}
+airbnb_data_less_1000 <-
+  airbnb_data_selected |>
+  filter(price < 1000)
+```
+
+From these listings that are less than or equal to $999, we are interested in seeing if the hosts of these listings are superhosts. On Airbnb, superhosts are especially experienced hosts, and hosts are either a superhost or not a superhost. 
+
+```{r}
+airbnb_data_less_1000 |>
+  filter(is.na(host_is_superhost))
+```
+
+In the data right now, the superhost is a true/false variable, but we want to turn it into a binary variable.
+
+```{r}
+airbnb_data_no_superhost_nas <-
+  airbnb_data_less_1000 |>
+  filter(!is.na(host_is_superhost)) |>
+  mutate(
+    host_is_superhost_binary =
+      as.numeric(host_is_superhost)
+  )
+```
+
+Next, we look at the reviews in the listings. 
+
+```{r}
+#| warning: false
+#| message: false
+
+airbnb_data_no_superhost_nas |>
+  ggplot(aes(x = review_scores_rating)) +
+  geom_bar() +
+  theme_classic() +
+  labs(
+    x = "Review scores rating",
+    y = "Number of properties"
+  )
+```
+
+
+We want to deal with the NAs in the review_scores_rating variable. This process is slightly more complicated.
+
+```{r}
+airbnb_data_no_superhost_nas |>
+  filter(is.na(review_scores_rating)) |>
+  nrow()
+
+airbnb_data_no_superhost_nas |>
+  filter(is.na(review_scores_rating)) |>
+  select(number_of_reviews) |>
+  table()
+
+```
+
+Instead, we can just focus on those that are not missing and the main review score variable. 
+```{r}
+airbnb_data_no_superhost_nas |>
+  filter(!is.na(review_scores_rating)) |>
+  ggplot(aes(x = review_scores_rating)) +
+  geom_histogram(binwidth = 1) +
+  theme_classic() +
+  labs(
+    x = "Average review score",
+    y = "Number of properties"
+  )
+```
+
+For simplicity, we will remove all with NA in the main review score. 
+
+```{r}
+airbnb_data_has_reviews <-
+  airbnb_data_no_superhost_nas |>
+  filter(!is.na(review_scores_rating))
+```
+
+Another important variable to look at is the response time of hosts. 
+
+```{r}
+airbnb_data_has_reviews |>
+  count(host_response_time)
+```
+
+```{r}
+airbnb_data_has_reviews <-
+  airbnb_data_has_reviews |>
+  mutate(
+    host_response_time = if_else(
+      host_response_time == "N/A",
+      NA_character_,
+      host_response_time
+    ),
+    host_response_time = factor(host_response_time)
+  )
+```
+
+Let's look at the distribution of review scores.
+```{r}
+airbnb_data_has_reviews |>
+  filter(is.na(host_response_time)) |>
+  ggplot(aes(x = review_scores_rating)) +
+  geom_histogram(binwidth = 1) +
+  theme_classic() +
+  labs(
+    x = "Average review score",
+    y = "Number of properties"
+  )
+```
+
+```{r}
+airbnb_data_has_reviews |>
+  ggplot(aes(
+    x = host_response_time,
+    y = review_scores_accuracy
+  )) +
+  geom_miss_point() +
+  labs(
+    x = "Host response time",
+    y = "Review score accuracy",
+    color = "Is missing?"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+Removing anyone with a response time of NA
+```{r}
+airbnb_data_selected <-
+  airbnb_data_has_reviews |>
+  filter(!is.na(host_response_time))
+```
+
+We look at the number of properties Airbnb hosts have.
+```{r}
+#| message: false
+
+airbnb_data_selected |>
+  ggplot(aes(x = host_total_listings_count)) +
+  geom_histogram() +
+  scale_x_log10() +
+  labs(
+    x = "Total number of listings, by host",
+    y = "Number of hosts"
+  )
+```
+
+```{r}
+airbnb_data_selected |>
+  filter(host_total_listings_count >= 500) |>
+  head()
+
+```
+
+For simplicity, we focus on hosts with one propety.
+```{r}
+airbnb_data_selected <-
+  airbnb_data_selected |>
+  add_count(host_id) |>
+  filter(n == 1) |>
+  select(-n)
+```
+
+
+# Relationship between Variables
+We want to look at the relationship between price and reviews, and whether they are a super host, for properties that have more than one review. 
+```{r}
+airbnb_data_selected |>
+  filter(number_of_reviews > 1) |>
+  ggplot(aes(x = price, y = review_scores_rating, 
+             color = host_is_superhost)) +
+  geom_point(size = 1, alpha = 0.1) +
+  theme_classic() +
+  labs(
+    x = "Price per night",
+    y = "Average review score",
+    color = "Superhost"
+  ) +
+  scale_color_brewer(palette = "Set1")
+```
+Looking deeper at superhosts data.
+```{r}
+airbnb_data_selected |>
+  count(host_is_superhost) |>
+  mutate(
+    proportion = n / sum(n),
+    proportion = round(proportion, digits = 2)
+  )
+```
+
+```{r}
+airbnb_data_selected |>
+  tabyl(host_response_time, host_is_superhost) |>
+  adorn_percentages("col") |>
+  adorn_pct_formatting(digits = 0) |>
+  adorn_ns() |>
+  adorn_title()
+```
+
+Finally, let's look at neighborhoods. 
+```{r}
+airbnb_data_selected |>
+  tabyl(neighbourhood_cleansed) |>
+  adorn_pct_formatting() |>
+  arrange(-n) |>
+  filter(n > 100) |>
+  adorn_totals("row") |>
+  head()
+```
+
+We build a model to get a better idea of the relationships that exist in our data. Here, we try to forecast whether someone is a superhost. We expect that superhost status will be associated with faster responses and better reviews. 
+
+```{r}
+logistic_reg_superhost_response_review <-
+  glm(
+    host_is_superhost ~
+      host_response_time +
+      review_scores_rating,
+    data = airbnb_data_selected,
+    family = binomial
+  )
+```
+
+
+Below is a table displaying the regression results. 
+```{r}
+modelsummary(logistic_reg_superhost_response_review)
+```
+
+From this, we can see that there is a positive relationship with the different factors and the probability of the host being a superhost. 
+
+Last, we save the analysis dataset.
+```{r}
+write_parquet(
+  x = airbnb_data_selected, 
+  sink = "2023-12-12-paris-airbnblistings-analysis_dataset.parquet"
+  )
+```
+
+# References
